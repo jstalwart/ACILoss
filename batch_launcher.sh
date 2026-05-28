@@ -17,44 +17,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check if required arguments are provided
-if [[ -z "$experiment" || -z "$dataset" || -z "$horizon" ]]; then
-    echo "Usage: $0 --experiment <experiment_name> --dataset <dataset> --horizon <horizon> --mode <mode> [--epochs <epochs> --batch <batch> --task <task>]"
+if [[ -z "$experiment" || -z "$dataset" || -z "$input" || -z "$output" || -z "$mode" ]]; then
+    echo "Usage: $0 --experiment <name> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --mode <mode> [--epochs <epochs>]"
     exit 1
 fi
 
 # Defaults
 epochs="${epochs:-200}"
-batch="${batch:-32}"
-task="${task:-reconstruction}"
-enc_path="./Models/${enc_path:-}"
 
 # Loop for seed
 for seed in 1812 2811 3002 4296 5221
 do
     outputs="./slurm-${experiment}.${seed}.out"
 
-    if [[ "$mode" == "LLE" ]]; then
-        sbatch -J "${experiment}.${seed}" -o "$outputs" --cpus-per-task=4 --mem 64G launcher.sh \
-            --experiment "$experiment" \
-            --seed "$seed" \
-            --dataset "$dataset" \
-            --horizon "$horizon" \
-            --mode "$mode" \
-            --epochs "$epochs" \
-            --batch "$batch" \
-            --task "$task" \
-            --encoder "$enc_path/encoder_$seed.pt"
-    else
-        sbatch -J "${experiment}.${seed}" -o "$outputs" launcher.sh \
-            --experiment "$experiment" \
-            --seed "$seed" \
-            --dataset "$dataset" \
-            --horizon "$horizon" \
-            --mode "$mode" \
-            --epochs "$epochs" \
-            --batch "$batch" \
-            --task "$task" \
-            --encoder "$enc_path/encoder_$seed.pt"
-    fi
-    
+    sbatch -J "${experiment}.${seed}" -o "$outputs" launcher.sh \
+        --experiment "$experiment" \
+        --seed "$seed" \
+        --dataset "$dataset" \
+        --input_size "$input" \
+        --output_size "$output" \
+        --epochs "$epochs" \
+        --mode "$mode"
 done
