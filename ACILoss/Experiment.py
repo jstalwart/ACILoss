@@ -92,7 +92,7 @@ class Experiment:
                                                  emb_size = self.emb_size),
                                      Encoder(emb_size = self.emb_size, 
                                              depth = self.enc_depth,
-                                             **kwargs))
+                                             **kwargs)).to(self.device)
         
     def load_encoder(self,
                      state:dict = None,
@@ -118,7 +118,7 @@ class Experiment:
                                              depth = self.dec_depth,
                                              **kwargs),
                                      RegressionHead(emb_size=self.emb_size, 
-                                                    out_size=self.output_size))
+                                                    out_size=self.output_size)).to(self.device)
         
     def load_decoder(self,
                    state:dict = None):
