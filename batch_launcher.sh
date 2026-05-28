@@ -7,7 +7,6 @@ source ~/miniconda3/bin/activate emb-env
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --experiment)   experiment="$2"; shift 2 ;;
-        --seed)         seed="$2";       shift 2 ;;
         --dataset)      dataset="$2";    shift 2 ;;
         --input_size)   input="$2";      shift 2 ;;
         --output_size)  output="$2";     shift 2 ;;
