@@ -1,0 +1,9 @@
+Models/
+OTSR/__pycache__/
+results.ipynb
+prueba.py
+slurm*.out
+./tmp*/
+torchinductor_agarcuc@alumno.upv.es/
+Method_sketch.odt
+.~lock*
