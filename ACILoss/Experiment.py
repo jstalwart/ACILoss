@@ -16,6 +16,8 @@ import torch
 import time
 import os
 
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
 class Experiment:
     def __init__(self,
                  name:str,
