@@ -70,7 +70,7 @@ class Experiment:
 
         datasets = ["M1", "M2", "ECL1", "ECL2", "ECL3", "H1", "H2", "PC", "TFF", "WTH", "ER", "ILI"]
         real_datasets = dict(zip(datasets, ["ETTm1", "ETTm2", "ECL", "ECL", "ECL", "ETTh1", "ETTh2", "Pedestrian", "Traffic", "Weather", "ER", "ILI"]))
-        time_series = dict(zip(datasets, ["OT"]*2+["MT_156","MT_162", "MT_189"]+["OT"]*2+["T9", "T407", "temperature", "Singapore", "ILITOTAL"]))
+        time_series = dict(zip(datasets, ["OT"]*2+["MT_156","MT_162", "MT_189"]+["OT"]*2+["value", "T407", "temperature", "Singapore", "ILITOTAL"]))
 
         assert self.dataset in datasets, f"Dataset {dataset} is ill-defined. Current version only supports {','.join(datasets)}."
 
