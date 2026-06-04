@@ -1,0 +1,13 @@
+
+---- Start Training ----
+
+---- Loading encoder ----
+
+---- Loading decoder ----
+Parameters: 5.49e+06
+Train Loss: 8.20e-01 in epoch 3.
+Test Loss: 1.86e+00 in epoch 3.
+Average training time by epoch: 3.89e+01 seconds,
+Standard deviation for training time by epoch: 2.27e-01 seconds.
+Validation RMSE: 1.4774e-01
+Validation MAPE: 2.4128e+11
