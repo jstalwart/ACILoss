@@ -1,6 +1,3 @@
-from node2vec import Node2Vec
-from ts2vg import NaturalVG
-from einops import reduce
 import networkx as nx
 from torch import nn
 import numpy as np

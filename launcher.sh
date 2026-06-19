@@ -4,7 +4,7 @@
 # Recommended: stop script if a command fails or a variable is unset
 set -e
 
-source ~/miniconda3/bin/activate emb-env
+source ~/miniconda3/bin/activate ACI-env
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

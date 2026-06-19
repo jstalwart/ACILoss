@@ -1,8 +1,10 @@
 #from persim import wasserstein, bottleneck, PersistenceEntropy
+from transformers import InformerConfig, InformerForPrediction, AutoformerConfig, AutoformerForPrediction
 from sklearn.metrics import mean_absolute_percentage_error as MAPE
-from torch.utils.data import random_split, DataLoader, Subset
 from sklearn.metrics import root_mean_squared_error as RMSE
 from sklearn.metrics import mean_absolute_error as MAE
+from torch.utils.data import DataLoader
+from .Wrapper import *
 from .Encoder import Encoder
 from .Dataset import *
 import torch.nn as nn
@@ -19,13 +21,35 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 class Experiment:
+    '''
+    Parameters:
+        - name (str): the name of the experiment
+        - model (str): the name of the TSF model employed. 
+        - input_size (int): the timestamps considered for prediction
+        - emb_size (int): the embedding size. 
+        - output_size (int): the prediction horizon. 
+        - loss (str): the loss employed. 
+        - seed (int): the random seed used in the experiment. 
+        - device (str): the deviced for the execution. 
+        - enc_depth (int): the number of layers in the encoder. 
+        - dec_depth (int): the number of layers in the decoder. 
+        - batch_size (int): the number of observations per batch. 
+        - dataset (str): the name of dataset employed. 
+        - train_data (DataLoader): the data employed for training. 
+        - test_data (DataLoader): the data employed for testing. 
+        - val_data (DataLoader): the data employed for validation. 
+        - encoder (nn.Model): the model employed for encoding the series. 
+        - decoder (nn.Model): the model employed for decoding the series. 
+    '''
+
     def __init__(self,
                  name:str,
                  dataset: str,
                  input_size:int,
                  emb_size:int,
                  output_size:int,
-                 mode:str,
+                 model:str,
+                 loss:str,
                  seed:int,
                  device:str = None,
                  batch_size:int = 32,
@@ -48,18 +72,21 @@ class Experiment:
             - dec_depth (int): the decoder depth. Default is 8. 
         '''
         self.name = name
+        self.model = model.lower()
         self.input_size = input_size
         self.emb_size = emb_size
         self.output_size=output_size
-        self.mode = mode.upper()
+        self.loss = loss.upper()
         self.seed = seed
         self.device = device if device != None else "cuda" if torch.cuda.is_available() else "cpu"
         self.enc_depth = enc_depth
         self.dec_depth = dec_depth
         self.batch_size = batch_size
 
-        modes = ["ACI", ""]
-        assert self.mode in modes, f"Mode {mode} is ill-defined. Current version only supports 'ACI' or None."
+        losses = ["ACI", ""]
+        assert self.loss in losses, f"Loss {loss} is ill-defined. Current version only supports 'ACI' or None."
+        models = ["transformer", "informer", "autoformer"]
+        assert self.model in models, f"Loss {loss} is ill-defined. Current version only supports {', '.join(models)}."
         select_seed(self.seed)
         self.prepare_data(dataset)
         self.prepare_encoder()
@@ -90,11 +117,26 @@ class Experiment:
         '''
         Defines the encoder. 
         '''
-        self.encoder = nn.Sequential(TSEmbedding(in_features = self.input_size, 
-                                                 emb_size = self.emb_size),
-                                     Encoder(emb_size = self.emb_size, 
-                                             depth = self.enc_depth,
-                                             **kwargs)).to(self.device)
+        if self.model == "transformer":
+            self.encoder = nn.Sequential(TSEmbedding(in_features = self.input_size, 
+                                                    emb_size = self.emb_size),
+                                        Encoder(emb_size = self.emb_size, 
+                                                depth = self.enc_depth,
+                                                **kwargs)).to(self.device)
+        elif self.model == "informer":
+            config = InformerConfig(
+                    prediction_length=self.output_size, 
+                    context_length=self.input_size-1, 
+                    input_size=1,
+                    num_time_features=1, 
+                    lags_sequence = [1],
+                    scaling=None,
+                    d_model = self.emb_size,
+                    feature_size=4,
+                )
+            hf_model = InformerForPrediction.from_pretrained("huggingface/informer-tourism-monthly", config=config, ignore_mismatched_sizes=True)
+            #hf_model = InformerForPrediction(config)
+            self.encoder = hf_model.to(self.device)
         
     def load_encoder(self,
                      state:dict = None,
@@ -113,15 +155,29 @@ class Experiment:
         self.encoder.load_state_dict(state)
     
     def prepare_decoder(self, **kwargs):
-        '''
-        Defines the decoder
-        '''
-        self.decoder = nn.Sequential(Encoder(emb_size = self.emb_size, 
-                                             depth = self.dec_depth,
-                                             **kwargs),
-                                     RegressionHead(emb_size=self.emb_size, 
-                                                    out_size=self.output_size)).to(self.device)
-        
+        if self.model == "transformer":
+            self.decoder = nn.Sequential(Encoder(emb_size = self.emb_size, 
+                                                depth = self.dec_depth,
+                                                **kwargs),
+                                        RegressionHead(emb_size=self.emb_size, 
+                                                        out_size=self.output_size)).to(self.device)
+        elif self.model == "informer":
+            config = InformerConfig(
+                prediction_length=self.output_size, 
+                context_length=self.input_size, 
+                num_time_features=1, 
+                lags_sequence=[0],
+                scaling=None
+            )
+            hf_model = InformerForPrediction(config=config)
+            
+            # Use our custom pipeline instead of nn.Sequential
+            self.decoder = InformerPipeline(
+                hf_informer_decoder=hf_model.model.decoder, 
+                emb_size=512, 
+                out_size=self.output_size
+            ).to(self.device)
+
     def load_decoder(self,
                    state:dict = None):
         '''
@@ -162,7 +218,7 @@ class Experiment:
         total_loss = 0.0
         num_batches = 0
 
-        if self.mode == "ACI":
+        if self.loss == "ACI":
             aci_criterion = ACILoss()
         mse_criterion = nn.MSELoss()
 
@@ -171,12 +227,35 @@ class Experiment:
         for batch in tqdm(self.train_data, desc="Training model"):
             optimizer.zero_grad()
             x, y = batch["x"].to(self.device), batch["y"].to(self.device)
-
-            embedding = self.encoder(x)
-            crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.mode=="ACI" else 0.0
-            output = self.decoder(embedding)
-            crit2 = mse_criterion(output, y)
-            loss = scaler * crit1 + (1-scaler) * crit2 if self.mode == "ACI" else crit2
+            if self.model == "informer":
+                batch_size, seq_len = x.shape
+                batch_size, pred_len = y.shape
+                past_observed_mask = torch.ones(batch_size, seq_len, device=self.device)
+                past_time_features = torch.zeros(batch_size, seq_len, 1, device=self.device)
+                future_time_features = torch.zeros(batch_size, pred_len,  1, device=self.device)
+                model_outputs = self.encoder(past_values=x, 
+                                             past_time_features=past_time_features, 
+                                             past_observed_mask=past_observed_mask,
+                                             future_values = y,
+                                             future_time_features = future_time_features
+                                             )
+                embedding = model_outputs.encoder_last_hidden_state
+            elif self.model == "transformer":
+                embedding = self.encoder(x)
+            #print(embedding.shape)
+            #print(model_outputs)
+            if self.model == "informer":
+                crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss=="ACI" else 0.0
+            elif self.model == "transformer":
+                crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss=="ACI" else 0.0
+            embedding = embedding.squeeze(0).unsqueeze(1)
+            if self.model == "informer":
+                crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
+                # Squeeze the last dimension if input_size=1
+            else:
+                output = self.decoder(embedding)
+                crit2 = mse_criterion(output, y)
+            loss = scaler * crit1 + (1-scaler) * crit2 if self.loss == "ACI" else crit2
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -209,7 +288,7 @@ class Experiment:
         self.encoder.eval()
         self.decoder.eval()
 
-        if self.mode == "ACI":
+        if self.loss == "ACI":
             aci_criterion = ACILoss()
         mse_criterion = nn.MSELoss()
 
@@ -225,11 +304,42 @@ class Experiment:
                 x, y = batch["x"].to(self.device), batch["y"].to(self.device)
                 std, median = batch["std"].to(self.device), batch["median"].to(self.device)
 
-                embedding = self.encoder(x)
-                crit1 = aci_criterion(embedding.squeeze(dim=0), y) if self.mode=="ACI" else 0.0
-                output = self.decoder(embedding)
-                crit2 = mse_criterion(output, y)
-                loss = scaler * crit1 + (1-scaler) * crit2 if self.mode == "ACI" else crit2
+                if self.model == "informer":
+                    batch_size, seq_len = x.shape
+                    _, pred_len = y.shape
+                    past_observed_mask = torch.ones(batch_size, seq_len, device=self.device)
+                    past_time_features = torch.zeros(batch_size, seq_len, 1, device=self.device)
+                    future_time_features = torch.zeros(batch_size, pred_len,  1, device=self.device)
+                    model_outputs = self.encoder(past_values=x, 
+                                                past_time_features=past_time_features, 
+                                                past_observed_mask=past_observed_mask,
+                                                future_values = y,
+                                                future_time_features = future_time_features
+                                                )
+                    embedding = model_outputs.encoder_last_hidden_state
+                else:
+                    embedding = self.encoder(x)
+                
+                if self.model == "informer":
+                    crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss=="ACI" else 0.0
+                elif self.model == "transformer":
+                    crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss=="ACI" else 0.0
+                embedding = embedding.squeeze(0).unsqueeze(1)
+                if self.model == "informer":
+                    crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
+                    #print(model_outputs.last_hidden_state.shape)
+                    outputs_generated = self.encoder.generate(
+                        past_values=x, 
+                        past_time_features=past_time_features, 
+                        past_observed_mask=past_observed_mask,
+                        future_time_features=future_time_features
+                    )
+                    output = outputs_generated.sequences.mean(dim=1)
+                    # Squeeze the last dimension if input_size=1
+                else:
+                    output = self.decoder(embedding)
+                    crit2 = mse_criterion(output, y)
+                loss = scaler * crit1 + (1-scaler) * crit2 if self.loss == "ACI" else crit2
                 total_loss += loss.item()
                 num_batches += 1
 
@@ -332,13 +442,20 @@ class Experiment:
         '''
         best_test_loss = np.inf
         count=0
-        optimizer = torch.optim.Adam([{"params": self.encoder.parameters(), "lr":lr},
-                                      {"params": self.decoder.parameters(), "lr": lr}],
-                                      weight_decay = weight_decay)
+        if self.model == "informer":
+            optimizer = torch.optim.Adam(
+                list(self.encoder.parameters()) + list(self.decoder.parameters()), 
+                lr = lr, 
+                weight_decay = weight_decay
+            )
+        else:
+            optimizer = torch.optim.Adam([{"params": self.encoder.parameters(), "lr":lr},
+                                        {"params": self.decoder.parameters(), "lr": lr}],
+                                        weight_decay = weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 
-                                                               factor=.5, 
-                                                               patience=scheduler_patience, 
-                                                               min_lr=1e-9)
+                                                            factor=.5, 
+                                                            patience=scheduler_patience, 
+                                                            min_lr=1e-9)
         training_times = []
 
         # Init Log

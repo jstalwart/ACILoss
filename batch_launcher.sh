@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=1 --gpus=1
 
-source ~/miniconda3/bin/activate emb-env
-
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
