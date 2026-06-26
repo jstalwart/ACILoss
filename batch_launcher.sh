@@ -8,15 +8,16 @@ while [[ $# -gt 0 ]]; do
         --dataset)      dataset="$2";    shift 2 ;;
         --input_size)   input="$2";      shift 2 ;;
         --output_size)  output="$2";     shift 2 ;;
-        --mode)         mode="$2";       shift 2 ;;
+        --model)        model="$2";      shift 2 ;;
+        --loss)         loss="$2";       shift 2 ;;
         --epochs)       epochs="$2";     shift 2 ;;
         *) echo "Unknown argument: $1";   exit 1 ;;
     esac
 done
 
 # Check if required arguments are provided
-if [[ -z "$experiment" || -z "$dataset" || -z "$input" || -z "$output" || -z "$mode" ]]; then
-    echo "Usage: $0 --experiment <name> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --mode <mode> [--epochs <epochs>]"
+if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$output" || -z "$model" || -z "$loss" ]]; then
+    echo "Usage: $0 --experiment <name> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/None> [--epochs <epochs>]"
     exit 1
 fi
 
@@ -35,5 +36,6 @@ do
         --input_size "$input" \
         --output_size "$output" \
         --epochs "$epochs" \
-        --mode "$mode"
+        --model "$model" \
+        --loss "$loss"
 done

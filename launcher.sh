@@ -14,15 +14,16 @@ while [[ $# -gt 0 ]]; do
         --dataset)      dataset="$2";    shift 2 ;;
         --input_size)   input="$2";      shift 2 ;;
         --output_size)  output="$2";     shift 2 ;;
-        --mode)         mode="$2";       shift 2 ;;
+        --model)        model="$2";       shift 2 ;;
+        --loss)         loss="$2";       shift 2 ;;
         --epochs)       epochs="$2";     shift 2 ;;
         *) echo "Unknown argument: $1";   exit 1 ;;
     esac
 done
 
 # Check if required arguments are provided
-if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$output" || -z "$mode" ]]; then
-    echo "Usage: $0 --experiment <name> --seed <val> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --mode <mode> [--epochs <epochs>]"
+if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$output" || -z "$model" || -z "$loss" ]]; then
+    echo "Usage: $0 --experiment <name> --seed <val> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/None> [--epochs <epochs>]"
     exit 1
 fi
 
@@ -38,4 +39,4 @@ mkdir -p "$output_dir" "$log_dir" "$model_dir"
 result="$output_dir/$seed.out"
 
 # Execute
-python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --mode "$mode" -N "$epochs" > "$result"
+python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss "$loss" -N "$epochs" > "$result"
