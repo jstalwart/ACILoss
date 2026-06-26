@@ -27,6 +27,12 @@ if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$out
     exit 1
 fi
 
+if $model == "Transformer"; then
+    lr=0.001
+else; do
+    lr=0.00001
+fi
+
 # Set default for epochs if not provided
 epochs="${epochs:-2000}"
 
@@ -39,4 +45,4 @@ mkdir -p "$output_dir" "$log_dir" "$model_dir"
 result="$output_dir/$seed.out"
 
 # Execute
-python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss "$loss" -N "$epochs" > "$result"
+python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss "$loss" -N "$epochs" --lr > "$result"
