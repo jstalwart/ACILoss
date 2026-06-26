@@ -266,7 +266,7 @@ class Experiment:
     def test(self, 
              partition : str,
              scaler: float = .25,
-             metrics : list = ["RMSE", "MAPE"]):
+             metrics : list = ["RMSE", "MAE", "MAPE"]):
         '''
         Tests the model. 
 
@@ -377,7 +377,7 @@ class Experiment:
                    best_train_loss: float = None, 
                    best_test_loss: float = None, 
                    training_times: list = [],
-                   metrics = ["RMSE", "MAPE"],
+                   metrics = ["RMSE", "MAPE", "MAE"],
                    **kwargs):
         '''
         Evaluates the model using the validation partition.
@@ -495,4 +495,4 @@ class Experiment:
                         best_train_loss = best_train_loss,
                         best_test_loss = best_test_loss,
                         training_times = training_times, 
-                        metrics = ["RMSE", "MAPE"])
+                        metrics = ["RMSE", "MAE", "MAPE"])
