@@ -45,4 +45,4 @@ mkdir -p "$output_dir" "$log_dir" "$model_dir"
 result="$output_dir/$seed.out"
 
 # Execute
-python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss "$loss" -N "$epochs" --lr > "$result"
+python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss "$loss" -N "$epochs" -lr > "$result"
