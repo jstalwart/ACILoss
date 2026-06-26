@@ -27,9 +27,9 @@ if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$out
     exit 1
 fi
 
-if $model == "Transformer"; then
+if [$model == "Transformer"]; then
     lr=0.001
-else; do
+else
     lr=0.00001
 fi
 
