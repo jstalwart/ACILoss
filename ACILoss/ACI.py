@@ -59,3 +59,29 @@ class ACILoss(nn.Module):
         #smoothness = torch.norm(y_pred[1:] - y_pred[:-1], p=2, dim=1).mean()
         
         return base_loss #+ (self.smooth_weight * smoothness)
+    
+class SDMLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.delta = AutoCorrDistance()
+        self.kl = torch.nn.KLDivLoss(reduction="batchmean")
+
+    def forward(self, y_true, y_pred):
+        y_true = torch.Tensor(y_true)
+        y_pred = torch.Tensor(y_pred)
+        
+        delta_matrix = self.delta(y_true)
+        dist_emb = torch.cdist(y_pred, y_pred, p=2)
+
+        # NEW: Stability Scaling (Z-score normalization of distances)
+        # This ensures the Softmax "temperature" is comparable across different models
+        delta_matrix = (delta_matrix - delta_matrix.mean()) / (delta_matrix.std() + 1e-6)
+        dist_emb = (dist_emb - dist_emb.mean()) / (dist_emb.std() + 1e-6)
+        
+        # 3. Convert to distributions
+        # We use a negative kernel so that small distances = high probability
+        p = torch.nn.functional.softmax(-delta_matrix, dim=-1)
+        log_q = torch.nn.functional.log_softmax(-dist_emb, dim=-1)
+        
+        # 4. Compute KLD
+        return self.kl(log_q, p)

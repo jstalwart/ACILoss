@@ -11,7 +11,7 @@ import torch.nn as nn
 from tqdm import tqdm
 from .utils import *
 from .Head import *
-from .ACI import ACILoss
+from .ACI import *
 import numpy as np
 import random
 import torch
@@ -83,8 +83,8 @@ class Experiment:
         self.dec_depth = dec_depth
         self.batch_size = batch_size
 
-        losses = ["ACI", ""]
-        assert self.loss in losses, f"Loss {loss} is ill-defined. Current version only supports 'ACI' or None."
+        losses = ["ACI", "", "SDM"]
+        assert self.loss in losses, f"Loss {loss} is ill-defined. Current version only supports 'ACI', 'SDM' or None."
         models = ["transformer", "informer", "autoformer"]
         assert self.model in models, f"Loss {loss} is ill-defined. Current version only supports {', '.join(models)}."
         select_seed(self.seed)
@@ -220,6 +220,8 @@ class Experiment:
 
         if self.loss == "ACI":
             aci_criterion = ACILoss()
+        elif self.loss == "SDM":
+            aci_criterion = SDMLoss()
         mse_criterion = nn.MSELoss()
 
         self.encoder.train()
@@ -245,9 +247,9 @@ class Experiment:
             #print(embedding.shape)
             #print(model_outputs)
             if self.model == "informer":
-                crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss=="ACI" else 0.0
+                crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss!="" else 0.0
             elif self.model == "transformer":
-                crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss=="ACI" else 0.0
+                crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss!="" else 0.0
             embedding = embedding.squeeze(0).unsqueeze(1)
             if self.model == "informer":
                 crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
@@ -255,7 +257,7 @@ class Experiment:
             else:
                 output = self.decoder(embedding)
                 crit2 = mse_criterion(output, y)
-            loss = scaler * crit1 + (1-scaler) * crit2 if self.loss == "ACI" else crit2
+            loss = scaler * crit1 + (1-scaler) * crit2 if self.loss != "" else crit2
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -290,6 +292,8 @@ class Experiment:
 
         if self.loss == "ACI":
             aci_criterion = ACILoss()
+        elif self.loss == "SDM":
+            aci_criterion = SDMLoss()
         mse_criterion = nn.MSELoss()
 
         total_loss= 0.0
@@ -321,9 +325,9 @@ class Experiment:
                     embedding = self.encoder(x)
                 
                 if self.model == "informer":
-                    crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss=="ACI" else 0.0
+                    crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss != "" else 0.0
                 elif self.model == "transformer":
-                    crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss=="ACI" else 0.0
+                    crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss!="" else 0.0
                 embedding = embedding.squeeze(0).unsqueeze(1)
                 if self.model == "informer":
                     crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
@@ -339,7 +343,7 @@ class Experiment:
                 else:
                     output = self.decoder(embedding)
                     crit2 = mse_criterion(output, y)
-                loss = scaler * crit1 + (1-scaler) * crit2 if self.loss == "ACI" else crit2
+                loss = scaler * crit1 + (1-scaler) * crit2 if self.loss != "" else crit2
                 total_loss += loss.item()
                 num_batches += 1
 
@@ -364,6 +368,9 @@ class Experiment:
             if metric == "ACI":
                 aci = ACILoss()
                 results["ACI"] = aci(torch.Tensor(emb_list), torch.Tensor(x_list)).item()
+            if metric == "SDM":
+                sdm = SDMLoss()
+                results["SDM"] = sdm(torch.Tensor(emb_list), torch.Tensor(x_list)).item()
         
         return results
     
