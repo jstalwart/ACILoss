@@ -121,6 +121,7 @@ class MultiHeadCrossAttention(nn.Module):
     def forward(self, 
                 x_enc : torch.Tensor, 
                 x_dec : torch.Tensor,
+                mask = None,
                 **kwargs):
         '''
         Forward pass for the multihead cross-attention mechanism. 
@@ -133,20 +134,30 @@ class MultiHeadCrossAttention(nn.Module):
         Returns:
         - out: 2D torch.Tensor (batch, input_dim).
         '''
-        batch_size, input_dim = x_enc.size()
+        batch_size, seq_len, input_dim = x_enc.size()
+        _, seq_len_dec, _ = x_dec.size()
 
         queries = self.q(x_dec)
         # x_kv contains keys values for all heads
         x_kv = self.kv(x_enc) # only two linear layer
         keys, values = torch.chunk(x_kv, 2, dim=-1)
 
+        #Reshape to split heads. Output dim is [b_num_heads, seq_len, head_dim]
+        queries = queries.view(batch_size, seq_len_dec, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        keys = keys.view(batch_size, seq_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        values = values.view(batch_size, seq_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+
         # Compute scaled dot-product attention
         scaling = self.input_dim ** (1/2)
         energy = torch.matmul(queries, keys.transpose(-2, -1)) / scaling
+        if mask is not None:
+            # Apply mask if needed
+            fill_value = torch.finfo(torch.float32).min
+            energy.mask_fill(~mask, fill_value)
         att = F.softmax(energy, dim=-1)
         att = self.dropout(att)
 
         # Apply attention to values
         out = torch.matmul(att, values)
-        out = out.contiguous().view(batch_size, input_dim)
+        out = out.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len_dec, input_dim)
         return out

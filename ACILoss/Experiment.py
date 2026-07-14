@@ -1,16 +1,20 @@
 #from persim import wasserstein, bottleneck, PersistenceEntropy
 from transformers import InformerConfig, InformerForPrediction, AutoformerConfig, AutoformerForPrediction
 from sklearn.metrics import mean_absolute_percentage_error as MAPE
+from .Transformer.Transformer import EncoderPart, DecoderPart
 from sklearn.metrics import root_mean_squared_error as RMSE
 from sklearn.metrics import mean_absolute_error as MAE
+from .Informer.Encoder import EncoderLayer
+from .Informer.Decoder import DecoderLayer
+from .Informer.Encoder import InfEncoder
+from .Informer.Decoder import InfDecoder
 from torch.utils.data import DataLoader
-from .Wrapper import *
-from .Encoder import Encoder
+from .Informer.Attention import *
+from .Transformer.Head import *
 from .Dataset import *
 import torch.nn as nn
 from tqdm import tqdm
 from .utils import *
-from .Head import *
 from .ACI import *
 import numpy as np
 import random
@@ -28,13 +32,18 @@ class Experiment:
         - input_size (int): the timestamps considered for prediction
         - emb_size (int): the embedding size. 
         - output_size (int): the prediction horizon. 
-        - loss (str): the loss employed. 
+        - loss1 (str): the first Loss function employed. It can be None. 
+        - loss2 (str): the second Loss function emplyed. Current version only allows for MSE and NLL. 
         - seed (int): the random seed used in the experiment. 
         - device (str): the deviced for the execution. 
         - enc_depth (int): the number of layers in the encoder. 
         - dec_depth (int): the number of layers in the decoder. 
+        - heads (int): the number of heads in the attention modules. 
         - batch_size (int): the number of observations per batch. 
+        - dropout (float): the dropout present in the model. 
         - dataset (str): the name of dataset employed. 
+        - freq (str): the frequence for timestamps in the series. 
+        - exogenous (dict): the exogenous variables to account for each dataset. 
         - train_data (DataLoader): the data employed for training. 
         - test_data (DataLoader): the data employed for testing. 
         - val_data (DataLoader): the data employed for validation. 
@@ -49,12 +58,15 @@ class Experiment:
                  emb_size:int,
                  output_size:int,
                  model:str,
-                 loss:str,
+                 loss1:str,
+                 loss2:str,
                  seed:int,
                  device:str = None,
                  batch_size:int = 32,
                  enc_depth:int = 8,
-                 dec_depth:int = 8):
+                 dec_depth:int = 8,
+                 heads: int = 5,
+                 dropout:float=0.0):
         '''
         Initialises the experiment. 
 
@@ -64,45 +76,72 @@ class Experiment:
             - input_size (int): the input data size.
             - emb_size (int): the embedding size. 
             - output_size (int): the output data size. 
-            - mode (str): the mode ACI or regular. Default is None (regular). 
-            - device (str): the device to allocate the model. If None, it uses gpu if it can.
+            - model (str): the TSF model employed. Current version only supports for Transformer and Informer. 
+            - loss1 (str): the frist loss criterion. Current version supports ACI, SDM or regular. 
+            - loss2 (str): the second loss criterion. Current version supports MSE or NLL. 
             - seed (int): for experiment replication. 
+            - device (str): the device to allocate the model. If None, it uses gpu if it can.
             - batch_size (int): the batch size. 
             - enc_depth (int): the encoder depth. Default is 8.
             - dec_depth (int): the decoder depth. Default is 8. 
+            - heads (int): the number of heads in the attention modules. Default is 5. 
+            - dropout (float): the dropout for all the model. Default is 0.0. 
         '''
         self.name = name
         self.model = model.lower()
         self.input_size = input_size
         self.emb_size = emb_size
         self.output_size=output_size
-        self.loss = loss.upper()
+        self.loss1 = loss1.upper()
+        self.loss2 = loss2.upper()
         self.seed = seed
         self.device = device if device != None else "cuda" if torch.cuda.is_available() else "cpu"
         self.enc_depth = enc_depth
         self.dec_depth = dec_depth
+        self.heads = heads
         self.batch_size = batch_size
+        self.dropout = dropout
 
         losses = ["ACI", "", "SDM"]
-        assert self.loss in losses, f"Loss {loss} is ill-defined. Current version only supports 'ACI', 'SDM' or None."
+        assert self.loss1 in losses, f"Loss {loss1} is ill-defined. Current version only supports 'ACI', 'SDM' or None."
+        losses = ["MSE", "NLL"]
+        assert self.loss2 in losses, f"Loss {loss2} is ill-defined. Current version only supports 'MSE' or 'NLL'."
         models = ["transformer", "informer", "autoformer"]
-        assert self.model in models, f"Loss {loss} is ill-defined. Current version only supports {', '.join(models)}."
+        assert self.model in models, f"Model {model} is ill-defined. Current version only supports {', '.join(models)}."
         select_seed(self.seed)
         self.prepare_data(dataset)
         self.prepare_encoder()
         self.prepare_decoder()
 
     def prepare_data(self, dataset):
+        '''
+        Prepares the dataset for using. 
+        ---
+        Args:
+            - dataset (str): the name of the dataset to use.        
+        '''
         self.dataset = dataset.upper()
 
-        datasets = ["M1", "M2", "ECL1", "ECL2", "ECL3", "H1", "H2", "PC", "TFF", "WTH", "ER", "ILI"]
-        real_datasets = dict(zip(datasets, ["ETTm1", "ETTm2", "ECL", "ECL", "ECL", "ETTh1", "ETTh2", "Pedestrian", "Traffic", "Weather", "ER", "ILI"]))
-        time_series = dict(zip(datasets, ["OT"]*2+["MT_156","MT_162", "MT_189"]+["OT"]*2+["value", "T407", "temperature", "Singapore", "ILITOTAL"]))
+        datasets = ["M1", "M2", "H1", "H2", "ECL", "PC", "TFF", "WTH", "ER", "ILI"]
+        assert self.dataset in datasets, f"Dataset {dataset} is not implemented. Current version only allows for {', '.join(datasets)}."
+        self.freq = dict(zip(datasets, ["t", "t", "h", "h", "t", "h", "h", "h", "d", "w"]))[self.dataset]
+        real_datasets = dict(zip(datasets, ["ETTm1", "ETTm2", "ETTh1", "ETTh2", "ECL", "Pedestrian", "Traffic", "Weather", "ER", "ILI"]))
+        endogenous = dict(zip(datasets, ["OT"]*4+["MT_320", "value", "T407", "temperature", "Singapore", "ILITOTAL"]))
+        exogenous = [["HUFL","HULL","MUFL","MULL","LUFL","LULL","fourier_sin_order1", "fourier_cos_order1"]]*4 + [
+                     [f"MT_{i+1:03}" for i in range(370) if i+1 != 320], 
+                     [f"T_{i+1}" for i in range(66) if i+1 != 9],
+                     [f"T_{i+1}" for i in range(861) if i+1 != 407],
+                     ["total_cloud_cover", "dewpoint_temperature", "surface_solar_radiation", "wind_speed", "mean_sea_level_pressure", "relative_humidity", "surface_thermal_radiation"],
+                     ["Australia", "UK", "Canada", "Switzerland", "China", "Japan", "New Zeland"] ,
+                     ["NUM. OF PROVIDERS", "TOTAL PATIENTS"]
+        ]
+        self.exogenous = dict(zip(datasets, exogenous))     
 
         assert self.dataset in datasets, f"Dataset {dataset} is ill-defined. Current version only supports {','.join(datasets)}."
 
-        train_data = MainDataset(path = f"../00-Data/{real_datasets[self.dataset]}.csv", 
-                                 endogenous = time_series[self.dataset], 
+        train_data = TSDataset(path = f"../00-Data/{real_datasets[self.dataset]}.csv", 
+                                 endogenous = endogenous[self.dataset], 
+                                 exogenous = self.exogenous[self.dataset],
                                  window_size=self.input_size, 
                                  horizon=self.output_size, 
                                  mode = "train")
@@ -116,27 +155,32 @@ class Experiment:
     def prepare_encoder(self, **kwargs):
         '''
         Defines the encoder. 
-        '''
+        '''                             
         if self.model == "transformer":
-            self.encoder = nn.Sequential(TSEmbedding(in_features = self.input_size, 
-                                                    emb_size = self.emb_size),
-                                        Encoder(emb_size = self.emb_size, 
-                                                depth = self.enc_depth,
-                                                **kwargs)).to(self.device)
+            self.encoder = EncoderPart(input_channels = len(self.exogenous[self.dataset])+1, 
+                                       d_model = self.emb_size, 
+                                       depth = self.enc_depth, 
+                                       n_heads = self.heads, 
+                                       forward_expansion = 4, 
+                                       embed_type = "fixed", 
+                                       freq = "h", 
+                                       dropout = self.dropout).to(self.device)
         elif self.model == "informer":
-            config = InformerConfig(
-                    prediction_length=self.output_size, 
-                    context_length=self.input_size-1, 
-                    input_size=1,
-                    num_time_features=1, 
-                    lags_sequence = [1],
-                    scaling=None,
-                    d_model = self.emb_size,
-                    feature_size=4,
-                )
-            hf_model = InformerForPrediction.from_pretrained("huggingface/informer-tourism-monthly", config=config, ignore_mismatched_sizes=True)
-            #hf_model = InformerForPrediction(config)
-            self.encoder = hf_model.to(self.device)
+            self.encoder = InfEncoder(input_features = len(self.exogenous[self.dataset])+1, 
+                                      d_model = self.emb_size, 
+                                      attn_layers = [EncoderLayer(
+                                          AttentionLayer(
+                                              ProbAttention(False, 5, attention_dropout=0.0, output_attention=False),
+                                              self.emb_size, self.heads, mix=False),
+                                          self.emb_size,
+                                          self.emb_size,
+                                          dropout=0.0,
+                                          activation="gelu") for l in range(self.enc_depth)], 
+                                      conv_layers=None, 
+                                      norm_layer = torch.nn.LayerNorm(self.emb_size),
+                                      embed_type="fixed", 
+                                      freq = self.freq, 
+                                      dropout = self.dropout).to(self.device)
         
     def load_encoder(self,
                      state:dict = None,
@@ -144,7 +188,7 @@ class Experiment:
                      **kwargs):
         '''
         Initializes the encoder and loads its parameters. 
-
+        ---
         Args:
             - path (str): the path of the file where the parameter values are storaged. 
         '''
@@ -155,34 +199,50 @@ class Experiment:
         self.encoder.load_state_dict(state)
     
     def prepare_decoder(self, **kwargs):
+        '''
+        Defines the decoder. 
+        '''
         if self.model == "transformer":
-            self.decoder = nn.Sequential(Encoder(emb_size = self.emb_size, 
-                                                depth = self.dec_depth,
-                                                **kwargs),
-                                        RegressionHead(emb_size=self.emb_size, 
-                                                        out_size=self.output_size)).to(self.device)
+            self.decoder = DecoderPart(input_channels = len(self.exogenous[self.dataset]), 
+                                       output_size = self.output_size, 
+                                       d_model = self.emb_size, 
+                                       depth = self.dec_depth, 
+                                       n_heads_self=self.heads, 
+                                       n_heads_cross = self.heads, 
+                                       forward_expansion = 4, 
+                                       embed_type="fixed", 
+                                       freq = self.freq, 
+                                       dropout = self.dropout).to(self.device)
         elif self.model == "informer":
-            config = InformerConfig(
-                prediction_length=self.output_size, 
-                context_length=self.input_size, 
-                num_time_features=1, 
-                lags_sequence=[0],
-                scaling=None
-            )
-            hf_model = InformerForPrediction(config=config)
+            self.decoder = InfDecoder(input_channels=len(self.exogenous[self.dataset]), 
+                                      output_features = self.output_size, 
+                                      d_model = self.emb_size, 
+                                      layers = [
+                                        DecoderLayer(
+                                            AttentionLayer(
+                                                ProbAttention(True, 5, attention_dropout=self.dropout, output_attention=False),
+                                                self.emb_size,
+                                                self.heads, 
+                                                mix = True), 
+                                            AttentionLayer(
+                                                FullAttention(False, 5, attention_dropout=self.dropout, output_attention=False),
+                                                self.emb_size, 
+                                                self.heads, 
+                                                mix = False),
+                                        d_model = self.emb_size, 
+                                        d_ff = self.emb_size, 
+                                        dropout = self.dropout,
+                                        activation = "gelu") for l in range(self.dec_depth)], 
+                                      norm_layer=nn.LayerNorm(self.emb_size), 
+                                      embed_type="fixed", 
+                                      freq = self.freq, 
+                                      dropout = self.dropout).to(self.device)
             
-            # Use our custom pipeline instead of nn.Sequential
-            self.decoder = InformerPipeline(
-                hf_informer_decoder=hf_model.model.decoder, 
-                emb_size=512, 
-                out_size=self.output_size
-            ).to(self.device)
-
     def load_decoder(self,
                    state:dict = None):
         '''
         Initializes the model  and loads its parameters. 
-
+        ---
         Args:
             - state: dictionary for the model's parameters. If None, the model tries loading the model from a file.
         '''
@@ -198,13 +258,13 @@ class Experiment:
                  time_epoch:float):
         """
         Saves the log for the model. 
-
-        Parameters:
-        - optimizer: the optimizer used. Current version only supports Adam.
-        - epoch (int): appointing to the current epoch.
-        - train_RMSE (float): RMSE obtained during training.. 
-        - test_RMSE (float): RMSE obtained during testing.
-        - time_epoch (float): training time in seconds. 
+        ---
+        Args:
+            - optimizer: the optimizer used. Current version only supports Adam.
+            - epoch (int): appointing to the current epoch.
+            - train_RMSE (float): RMSE obtained during training.. 
+            - test_RMSE (float): RMSE obtained during testing.
+            - time_epoch (float): training time in seconds. 
         """
 
         f = open(f"./Logs/{self.name}/{self.seed}.log", "a")
@@ -214,50 +274,57 @@ class Experiment:
         f.close()
 
     def train(self, optimizer, scaler=.25, **kwargs):
+        '''
+        Trains the model for one epoch. 
+        ---
+        Args:
+            - optimizer (algorithm): the algoritm for optimizing the loss function. 
+            - scaler (float): the scaler for computing the loss function. 
+        ---
+        Returns:
+            - total_loss (float): the computed loss for all batches. 
+            - total_time (float): the time in seconds it needed to train the epoch.
+        '''
         start = time.time()
         total_loss = 0.0
         num_batches = 0
 
-        if self.loss == "ACI":
-            aci_criterion = ACILoss()
-        elif self.loss == "SDM":
-            aci_criterion = SDMLoss()
-        mse_criterion = nn.MSELoss()
+        if self.loss1 == "ACI":
+            first_criterion = ACILoss()
+        elif self.loss1 == "SDM":
+            first_criterion = SDMLoss()
+            
+        if self.loss2 == "NLL":
+            second_criterion = nn.GaussianNLLLoss()
+        elif self.loss2 == "MSE":
+            second_criterion = nn.MSELoss()
 
         self.encoder.train()
         self.decoder.train()
         for batch in tqdm(self.train_data, desc="Training model"):
             optimizer.zero_grad()
             x, y = batch["x"].to(self.device), batch["y"].to(self.device)
-            if self.model == "informer":
-                batch_size, seq_len = x.shape
-                batch_size, pred_len = y.shape
-                past_observed_mask = torch.ones(batch_size, seq_len, device=self.device)
-                past_time_features = torch.zeros(batch_size, seq_len, 1, device=self.device)
-                future_time_features = torch.zeros(batch_size, pred_len,  1, device=self.device)
-                model_outputs = self.encoder(past_values=x, 
-                                             past_time_features=past_time_features, 
-                                             past_observed_mask=past_observed_mask,
-                                             future_values = y,
-                                             future_time_features = future_time_features
-                                             )
-                embedding = model_outputs.encoder_last_hidden_state
-            elif self.model == "transformer":
-                embedding = self.encoder(x)
-            #print(embedding.shape)
-            #print(model_outputs)
-            if self.model == "informer":
-                crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss!="" else 0.0
-            elif self.model == "transformer":
-                crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss!="" else 0.0
-            embedding = embedding.squeeze(0).unsqueeze(1)
-            if self.model == "informer":
-                crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
-                # Squeeze the last dimension if input_size=1
-            else:
-                output = self.decoder(embedding)
-                crit2 = mse_criterion(output, y)
-            loss = scaler * crit1 + (1-scaler) * crit2 if self.loss != "" else crit2
+            z, t1, t2 = batch["z"].to(self.device), batch["t1"].to(self.device), batch["t2"].to(self.device)
+            dec_self_mask = batch["mask"].to(self.device)
+
+            
+            embedding = self.encoder(x=x,
+                                     x_mark = t1)
+            
+            crit1 = first_criterion(embedding, x) if self.loss1!="" else 0.0
+
+            output, variance = self.decoder(y = z, 
+                                            y_mark = t2,
+                                            x = embedding, 
+                                            self_mask = dec_self_mask,
+                                            cross_mask = None)
+            if self.loss2 == "MSE":
+                crit2 = second_criterion(output, y)
+            elif self.loss2 == "NLL":
+                crit2 = second_criterion(output, y, variance)
+
+            loss = scaler * crit1 + (1-scaler) * crit2 if self.loss1 != "" else crit2
+
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -271,11 +338,11 @@ class Experiment:
              metrics : list = ["RMSE", "MAE", "MAPE"]):
         '''
         Tests the model. 
-
+        ---
         Args:
             - partition (str); the data partition where to test the model. Current version only supports 'train', 'test' or 'val'. 
             - metrics (list of str): the metrics to evaluate the model. Default are RMSE and MAPE. 
-
+        ---
         Returns:
             - results: dicts with metric as keys and results as values.  
         '''
@@ -290,11 +357,15 @@ class Experiment:
         self.encoder.eval()
         self.decoder.eval()
 
-        if self.loss == "ACI":
-            aci_criterion = ACILoss()
-        elif self.loss == "SDM":
-            aci_criterion = SDMLoss()
-        mse_criterion = nn.MSELoss()
+        if self.loss1 == "ACI":
+            first_criterion = ACILoss()
+        elif self.loss1 == "SDM":
+            first_criterion = SDMLoss()
+        
+        if self.loss2 == "NLL":
+            second_criterion = nn.GaussianNLLLoss()
+        elif self.loss2 == "MSE":
+            second_criterion = nn.MSELoss()
 
         total_loss= 0.0
         num_batches = 0
@@ -303,47 +374,32 @@ class Experiment:
         emb_list = []
         x_list = []
 
-        with torch.no_grad():
+        with torch.no_grad():      
             for batch in tqdm(part, desc="Testing model"):
                 x, y = batch["x"].to(self.device), batch["y"].to(self.device)
+                z, t1, t2 = batch["z"].to(self.device), batch["t1"].to(self.device), batch["t2"].to(self.device)
+                dec_self_mask = batch["mask"].to(self.device)
                 std, median = batch["std"].to(self.device), batch["median"].to(self.device)
 
-                if self.model == "informer":
-                    batch_size, seq_len = x.shape
-                    _, pred_len = y.shape
-                    past_observed_mask = torch.ones(batch_size, seq_len, device=self.device)
-                    past_time_features = torch.zeros(batch_size, seq_len, 1, device=self.device)
-                    future_time_features = torch.zeros(batch_size, pred_len,  1, device=self.device)
-                    model_outputs = self.encoder(past_values=x, 
-                                                past_time_features=past_time_features, 
-                                                past_observed_mask=past_observed_mask,
-                                                future_values = y,
-                                                future_time_features = future_time_features
-                                                )
-                    embedding = model_outputs.encoder_last_hidden_state
-                else:
-                    embedding = self.encoder(x)
+                embedding = self.encoder(x=x,
+                                        x_mark = t1)
                 
-                if self.model == "informer":
-                    crit1 = aci_criterion(embedding.reshape(batch_size, embedding.shape[1]*embedding.shape[2]), x) if self.loss != "" else 0.0
-                elif self.model == "transformer":
-                    crit1 = aci_criterion(embedding.squeeze(dim=0), x) if self.loss!="" else 0.0
-                embedding = embedding.squeeze(0).unsqueeze(1)
-                if self.model == "informer":
-                    crit2 = model_outputs.loss  # shape: (batch, pred_len, input_size)
-                    #print(model_outputs.last_hidden_state.shape)
-                    outputs_generated = self.encoder.generate(
-                        past_values=x, 
-                        past_time_features=past_time_features, 
-                        past_observed_mask=past_observed_mask,
-                        future_time_features=future_time_features
-                    )
-                    output = outputs_generated.sequences.mean(dim=1)
-                    # Squeeze the last dimension if input_size=1
-                else:
-                    output = self.decoder(embedding)
-                    crit2 = mse_criterion(output, y)
-                loss = scaler * crit1 + (1-scaler) * crit2 if self.loss != "" else crit2
+                crit1 = first_criterion(embedding, x) if self.loss1!="" else 0.0
+                
+                #embedding = embedding.squeeze(0).unsqueeze(1)
+
+                output, variance = self.decoder(y = z, 
+                                                y_mark = t2,
+                                                x = embedding, 
+                                                self_mask = dec_self_mask,
+                                                cross_mask = None)
+                if self.loss2 == "MSE":
+                    crit2 = second_criterion(output, y)
+                elif self.loss2 == "NLL":
+                    crit2 = second_criterion(output, y, variance)
+
+                loss = scaler * crit1 + (1-scaler) * crit2 if self.loss1 != "" else crit2
+                
                 total_loss += loss.item()
                 num_batches += 1
 
@@ -375,6 +431,15 @@ class Experiment:
         return results
     
     def n_params(self, model):
+        '''
+        Returns the number of parameters for the given model. 
+        ---
+        Args:
+            - model (nn.Module): the model to obain the n_params. 
+        ---
+        Returns:
+            - n_params (int): the number of parameters in the model. 
+        '''
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     
     def evaluation(self, 
@@ -388,14 +453,16 @@ class Experiment:
                    **kwargs):
         '''
         Evaluates the model using the validation partition.
-
+        ---
         Args:
-        - params (dict): state_dict of the model parameters. 
+        - params_encoder (dict): state_dict of the encoder parameters. 
+        - params_decoder (dict): state_dict of the decpder parameters. 
         - best_epoch (int): the epoch achieving the best test. 
-        - best_train_RMSE (float): the RMSE obtained in the best_epoch.
-        - best_test_RMSE (float): the best RMSE obtained in test. std
-        - training_times (list): a list of the training times. 
-
+        - best_train_loss (float): the loss obtained in the best_epoch.
+        - best_test_loss (float): the best loss obtained in test.
+        - training_times (list of float): a list of the training times. 
+        - metrics (list of str): the metrics to print in the evaluation scheme. 
+        ---
         Returns:
         - None
         '''
@@ -436,17 +503,19 @@ class Experiment:
             weight_decay = 1e-4):
         '''
         Method for training and evaluating the model. 
-
+        ---
         Args:
+            - scaler (float ranging 0 and 1): the scaler for the multiobjective loss. 
             - epochs (int): the number of iterations in training. 
             - lr (float): the learning rate for training the model. 
             - patience (int): the iterations without improvement before early stopping. Default is 30. 
             - scheduler_patience (int): the patience before dropping the learning rate. Default is 10. 
             - weight_decay (float): for the Adam Algorithm. 
-
+        ---
         Returns:
             - None
         '''
+        assert scaler <= 1 and scaler >= 0, f"Scaler {scaler} must be contained withiin 0 and 1, both inclusive."
         best_test_loss = np.inf
         count=0
         if self.model == "informer":

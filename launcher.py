@@ -5,19 +5,23 @@ import torch
 def main():
     parser = argparse.ArgumentParser(description="Calculates result for model",
                                      formatter_class=argparse.RawTextHelpFormatter)
+    # Experiment deffinition
     parser.add_argument("-n", "--name", type=str, help="Name of the experiment.", required=True)
     parser.add_argument("-d", "--dataset", type=str, help="Dataset to use.", required=True)
+    parser.add_argument("-s", "--seed", type=int, help="The seed for replication.", required=False, default=1812)
+    # Model deffinition
     parser.add_argument("-m", "--model", type=str, help="The regression model.", required=True)
-
     parser.add_argument("-i", "--input_size", type=int, help="The ammount of data per window used.", required=True),
     parser.add_argument("-o", "--output_size", type=int, help="The horizon of prediction required.", required=True)
     parser.add_argument("-e", "--emb_size", type=int, help="The embedding size used.", required=False, default=168)
-
-
-    parser.add_argument("-s", "--seed", type=int, help="The seed for replication.", required=False, default=1812)
-    parser.add_argument("-l", "--loss", type=str, help="Method employed for the embedding", required=False, default=None)
+    parser.add_argument("--encoder_depth", type=int, help="The encoder depth used.", required=False, default=8)
+    parser.add_argument("--decoder_depth", type=int, help="The decoder depth used.", required=False, default=8)
+    parser.add_argument("--n_heads", type=int, help="The number of heads in the attention modules.", required=False, default=8)
+    parser.add_argument("--dropout", type=float, help="The dropout used throughout the model.", required=False, default=0.0)
+    #Training parameters
+    parser.add_argument("-l1", "--loss1", type=str, help="Method employed for the embedding", required=False, default=None)
+    parser.add_argument("-l2", "--loss2", type=str, help="Method employed for the regression", required=False, default="MSE")
     parser.add_argument("-b", "--batch_size", type=int, help="The number of observations per batch", required=False, default=32)
-
     parser.add_argument("-W", "--scaler", type=float, help="The weighting scale for the Loss.", required=False, default=.25)
     parser.add_argument("-N", "--epochs", type=int, help="The number of iterations for training.", required=False, default=200)
     parser.add_argument("-P", "--patience", type=int, help="Number of iterations without improving before early stopping.", required=False, default=30)
@@ -28,13 +32,18 @@ def main():
 
     ex = Experiment(name=args.name, 
                     dataset=args.dataset,
-                    model = args.model,
                     input_size=args.input_size,
                     emb_size = args.emb_size,
                     output_size = args.output_size,
-                    loss = args.loss if args.loss != "None" else "",
+                    model = args.model,
+                    loss1 = args.loss1 if args.loss1 != "None" else "",
+                    loss2 = args.loss2,
                     seed = args.seed,
-                    batch_size= args.batch_size)
+                    batch_size= args.batch_size,
+                    enc_depth = args.encoder_depth, 
+                    dec_depth = args.decoder_depth, 
+                    heads = args.n_heads,
+                    dropout = args.dropout)
 
     ex.fit(lr=1e-3,
            scaler=args.scaler,
