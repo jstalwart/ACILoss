@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--encoder_depth", type=int, help="The encoder depth used.", required=False, default=8)
     parser.add_argument("--decoder_depth", type=int, help="The decoder depth used.", required=False, default=8)
     parser.add_argument("--n_heads", type=int, help="The number of heads in the attention modules.", required=False, default=8)
-    parser.add_argument("--dropout", type=float, help="The dropout used throughout the model.", required=False, default=0.0)
+    parser.add_argument("--dropout", type=float, help="The dropout used throughout the model.", required=False, default=0.2)
     #Training parameters
     parser.add_argument("-l1", "--loss1", type=str, help="Method employed for the embedding", required=False, default=None)
     parser.add_argument("-l2", "--loss2", type=str, help="Method employed for the regression", required=False, default="MSE")
