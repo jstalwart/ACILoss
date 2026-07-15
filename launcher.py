@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--dropout", type=float, help="The dropout used throughout the model.", required=False, default=0.2)
     #Training parameters
     parser.add_argument("-l1", "--loss1", type=str, help="Method employed for the embedding", required=False, default=None)
-    parser.add_argument("-l2", "--loss2", type=str, help="Method employed for the regression", required=False, default="MSE")
+    parser.add_argument("-l2", "--loss2", type=str, help="Method employed for the regression", required=False, default="NLL")
     parser.add_argument("-b", "--batch_size", type=int, help="The number of observations per batch", required=False, default=32)
     parser.add_argument("-W", "--scaler", type=float, help="The weighting scale for the Loss.", required=False, default=.25)
     parser.add_argument("-N", "--epochs", type=int, help="The number of iterations for training.", required=False, default=200)
