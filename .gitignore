@@ -8,3 +8,5 @@ torchinductor_agarcuc@alumno.upv.es/
 Method_sketch.odt
 .~lock*
 ACILoss/__pycache__/*
+ACILoss/Informer/__pycache__/*
+ACILoss/Transformer/__pycache__/*
