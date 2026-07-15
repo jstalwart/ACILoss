@@ -10,19 +10,23 @@ while [[ $# -gt 0 ]]; do
         --output_size)  output="$2";     shift 2 ;;
         --model)        model="$2";      shift 2 ;;
         --loss)         loss="$2";       shift 2 ;;
+        --criteria)     criteria="$2";   shift 2 ;;
         --epochs)       epochs="$2";     shift 2 ;;
+        --lr)           lr="$2";         shift 2 ;;
         *) echo "Unknown argument: $1";   exit 1 ;;
     esac
 done
 
 # Check if required arguments are provided
 if [[ -z "$experiment" || -z "$dataset" || -z "$input" || -z "$output" || -z "$model" || -z "$loss" ]]; then
-    echo "Usage: $0 --experiment <name> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/None> [--epochs <epochs>]"
+    echo "Usage: $0 --experiment <name> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/SDM/None> [--epochs <epochs> --criteria <MSE/NLL> --lr <learning_rate>]"
     exit 1
 fi
 
 # Defaults
-epochs="${epochs:-200}"
+epochs="${epochs:-2000}"
+criteria="${criteria:-MSE}"
+lr="${lr:-0.001}"
 
 # Loop for seed
 for seed in 1812 2811 3002 4296 5221
@@ -37,5 +41,7 @@ do
         --output_size "$output" \
         --epochs "$epochs" \
         --model "$model" \
-        --loss "$loss"
+        --loss "$loss" \
+        --criteria "$criteria"\
+        --lr "$lr"
 done
