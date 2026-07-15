@@ -126,13 +126,13 @@ class Experiment:
         assert self.dataset in datasets, f"Dataset {dataset} is not implemented. Current version only allows for {', '.join(datasets)}."
         self.freq = dict(zip(datasets, ["t", "t", "h", "h", "t", "h", "h", "h", "d", "w"]))[self.dataset]
         real_datasets = dict(zip(datasets, ["ETTm1", "ETTm2", "ETTh1", "ETTh2", "ECL", "Pedestrian", "Traffic", "Weather", "ER", "ILI"]))
-        endogenous = dict(zip(datasets, ["OT"]*4+["MT_320", "value", "T407", "temperature", "Singapore", "ILITOTAL"]))
+        endogenous = dict(zip(datasets, ["OT"]*4+["MT_320", "T9", "T407", "temperature", "Singapore", "ILITOTAL"]))
         exogenous = [["HUFL","HULL","MUFL","MULL","LUFL","LULL","fourier_sin_order1", "fourier_cos_order1"]]*4 + [
                      [f"MT_{i+1:03}" for i in range(370) if i+1 != 320], 
-                     [f"T_{i+1}" for i in range(66) if i+1 != 9],
+                     ['T1', 'T10', 'T11', 'T12', 'T14', 'T15', 'T17', 'T18', 'T2', 'T4', 'T5', 'T6'],
                      [f"T_{i+1}" for i in range(861) if i+1 != 407],
                      ["total_cloud_cover", "dewpoint_temperature", "surface_solar_radiation", "wind_speed", "mean_sea_level_pressure", "relative_humidity", "surface_thermal_radiation"],
-                     ["Australia", "UK", "Canada", "Switzerland", "China", "Japan", "New Zeland"] ,
+                     ["Australia", "UK", "Canada", "Switzerland", "China", "Japan", "New Zealand"] ,
                      ["NUM. OF PROVIDERS", "TOTAL PATIENTS"]
         ]
         self.exogenous = dict(zip(datasets, exogenous))     
