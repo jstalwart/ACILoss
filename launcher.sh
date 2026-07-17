@@ -19,13 +19,14 @@ while [[ $# -gt 0 ]]; do
         --criteria)     criteria="$2";   shift 2 ;;
         --epochs)       epochs="$2";     shift 2 ;;
         --lr)           lr="$2";         shift 2 ;;
+        --batch_size)   batch_size="$2"; shift 2 ;;
         *) echo "Unknown argument: $1";   exit 1 ;;
     esac
 done
 
 # Check if required arguments are provided
 if [[ -z "$experiment" || -z "$seed" || -z "$dataset" || -z "$input" || -z "$output" || -z "$model" || -z "$loss" ]]; then
-    echo "Usage: $0 --experiment <name> --seed <val> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/SDM/None> [--epochs <epochs> --criteria <MSE/NLL> --lr <learning_rate>]"
+    echo "Usage: $0 --experiment <name> --seed <val> --dataset <data> --input_size <input_size> --output_size <pred_horizon> --model <model_name> --loss <ACI/SDM/None> [--epochs <epochs> --criteria <MSE/NLL> --lr <learning_rate> --batch_size <batch_size>]"
     exit 1
 fi
 
@@ -33,7 +34,7 @@ fi
 epochs="${epochs:-2000}"
 criteria="${criteria:-MSE}"
 lr="${lr:-0.001}"
-
+batch_size="${batch_size:-32}"
 
 # Create results directory if it doesn't exist
 output_dir="./results/$experiment"
@@ -44,4 +45,4 @@ mkdir -p "$output_dir" "$log_dir" "$model_dir"
 result="$output_dir/$seed.out"
 
 # Execute
-python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss1 "$loss" --loss2 "$criteria" -N "$epochs" -lr $lr > "$result"
+python launcher.py -n "$experiment" -s "$seed" -d "$dataset" -i "$input" -o "$output" --model "$model" --loss1 "$loss" --loss2 "$criteria" -N "$epochs" -lr $lr --batch_size "$batch_size" > "$result"
